@@ -164,6 +164,7 @@ def extract_Landsat_SR(points, start_time, end_time):
             #open qc img
             try:
                 qc_path = join(folder_path, folder_path.split("/")[-1] + '_pixel_qa.img')
+                print(qc_path)
                 cloud_mask_band = gdal.Open(qc_path)
             except Exception as e:
                 print(e)
