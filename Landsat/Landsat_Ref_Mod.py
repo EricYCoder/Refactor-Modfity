@@ -40,7 +40,7 @@ get the suitable file folds acoording to the path and row
 def get_file_list(path_row, data_dir, start_time, end_time):
     tar_list = {}
     for (path,row) in path_row:
-        file_folds = glob.glob(join(data_dir,"*","01",path,row,"*"))
+        file_folds = glob.glob(os.path.join(data_dir,"*","01",path,row,"*"))
 
         file_list = []
         for file_folder in file_folds:
@@ -125,6 +125,7 @@ def point_boundary_is_valid(bandfile, lat, lon):
         return True, px, py
 
 def extract_Landsat_SR(points, start_time, end_time):
+    time0 = time.time()
     path_row , sample_points = target_path_row(points)
     if len(path_row) == 0:
         raise Exception("There is no consitent path and row")
@@ -133,6 +134,7 @@ def extract_Landsat_SR(points, start_time, end_time):
         pass
 
     path_row = list(set(path_row))
+    print('Get path_row time:' + str(time.time() - time0))
 
     #Results Initialization
     landsat_ref_res = []
@@ -166,9 +168,11 @@ def extract_Landsat_SR(points, start_time, end_time):
         tile_count += 1
 
         img_folders = tar_list[pr_key]
+            
         for folder_path in img_folders:
-            print(folder_path)
+            time0 = time.time()
             file_date = folder_path.split("_")[-4]
+
             #open qc img
             try:
                 qc_path = join(folder_path, folder_path.split("/")[-1] + '_pixel_qa.img')
@@ -185,7 +189,7 @@ def extract_Landsat_SR(points, start_time, end_time):
             bandfiles = {}
             bandraster = {}
 
-            if satellite in ["LT05","LE07"]:
+            if satellite in ["LT05", "LE07"]:
                 File_Path['B_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band1.img')
                 File_Path['G_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band2.img')
                 File_Path['R_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band3.img')
@@ -208,11 +212,15 @@ def extract_Landsat_SR(points, start_time, end_time):
                     print(e)
                     print('Unable to open ' + band_type + ' file\n')
                     continue
+            
+            time1 = time.time()
+            print('Open file time:' + str(time1 - time0))
 
             for location in sample_points[pr_key]:
                 lat = location[0]
                 lon = location[1]
 
+                print(folder_path)
                 #Check if data is valid
                 is_valid, px, py = point_boundary_is_valid(cloudmask, lat, lon)
                 if not is_valid:
@@ -250,7 +258,6 @@ def extract_Landsat_SR(points, start_time, end_time):
                         for band_type in band_key_list:
                             try:
                                 landsat_ref_record[band_type].append((file_date, float(band_data[band_type])))
-                                break
                             except KeyError:
                                 print('Key Error!!!')
                                 pass
@@ -259,6 +266,9 @@ def extract_Landsat_SR(points, start_time, end_time):
                 if point_exist is False:
                     print("This point has not been initialized: " + str(location) + "\n")
                     continue
+
+            time2 = time.time()
+            print('Extract time:' + str(time2 - time1))
 
     #Sort the resuls by date
     for landsat_ref_record in landsat_ref_res:
@@ -270,9 +280,11 @@ def extract_Landsat_SR(points, start_time, end_time):
 if __name__ == '__main__':
 
     startt=time.time()
-    points = [(29.822911628984635, -100.42548077091972)]
-    start_time = "20130301"
-    end_time = "20131030"
+    # points = [(29.822911628984635, -100.42548077091972)]
+    points = np.load('lonlatArray.npz')['arr_0']
+    
+    start_time = "20130401"
+    end_time = "20131001"
     result = extract_Landsat_SR(points, start_time, end_time)
     printer.pprint(result)
     print(time.time() - startt)

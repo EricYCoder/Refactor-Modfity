@@ -119,17 +119,15 @@ def point_boundary_is_valid(bandfile, lat, lon):
 
 def extract_Landsat_SR(points, start_time, end_time):
     time0 = time.time()
-    path_row , sample_points = target_path_row(points)
+    path_row, sample_points = target_path_row(points)
     if len(path_row) == 0:
         raise Exception("There is no consitent path and row")
     else:
         pass
 
+    print('Get path_row time:' + str(time.time() - time0))
     path_row = list(set(path_row))
     print(path_row)
-    time1 = time.time()
-    print('Get Path_Row time: ' + str(time1 - time0))
-
     #Results Initialization
     landsat_ref_res = []
     for pt in points:
@@ -159,13 +157,11 @@ def extract_Landsat_SR(points, start_time, end_time):
     else:
         pass
 
-    time2 = time.time()
-    print('Initialization time: ' + str(time2 - time1))
-
     #Try to extract Data in a faster way
     for pr_key in tar_list.keys():
         img_folders = tar_list[pr_key]
         for folder_path in img_folders:
+            time0 = time.time()
             file_date = folder_path.split("_")[-4]
             #open qc img
             try:
@@ -180,7 +176,6 @@ def extract_Landsat_SR(points, start_time, end_time):
             xsize = msband.RasterXSize
             ysize = msband.RasterYSize
 
-            time3 = time.time()
             for location in sample_points[pr_key]:
                 lat = location[0]
                 lon = location[1]
@@ -203,9 +198,6 @@ def extract_Landsat_SR(points, start_time, end_time):
                 cloud_mask = maskdata.ReadRaster(px, py, 1, 1, buf_type = maskdata.DataType)
                 fmt2 = pt2fmt(maskdata.DataType)
                 intval2 = struct.unpack(fmt2, cloud_mask)
-
-                time31 = time.time()
-                # print('Find Cloudmask time:' + str(time31 - time3))
 
                 #For clear sky, open other img files
                 if intval2[0] in [66, 130] or intval2[0] in [322, 386, 834, 898, 1346]:
@@ -275,15 +267,12 @@ def extract_Landsat_SR(points, start_time, end_time):
                         intval = struct.unpack(fmt, result)
                         SW2_ref = round(intval[0]*0.0001,4)
 
-                        # print('Extractor success!' + folder_path + '\n')
+                        print('Extractor success!' + folder_path + '\n')
 
                     except:
                         print("Cannot open img files in folder:" + folder_path + "\n")
                         continue
 
-
-                time32 = time.time()
-                print('Extract data time:' + str(time32 - time31))
                 #Add to results
                 point_exist = False
                 for landsat_ref_record in landsat_ref_res:
@@ -304,13 +293,6 @@ def extract_Landsat_SR(points, start_time, end_time):
                     print("The point has not been initialized: " + str(location) + "\n")
                     continue
 
-                time33 = time.time()
-                # print('Add result time:' + str(time33 - time32))
-
-            time4 = time.time()
-            print('one img time:' + str(time4 - time3))
-
-    time5 = time.time()
     #Sort the resuls by date
     for landsat_ref_record in landsat_ref_res:
         landsat_ref_record['B_band'].sort()
@@ -320,17 +302,15 @@ def extract_Landsat_SR(points, start_time, end_time):
         landsat_ref_record['SWIR1'].sort()
         landsat_ref_record['SWIR2'].sort()
 
-    time6 = time.time()
-    print('Sort result time:' + str(time6 - time5))
-
     return landsat_ref_res
 
 if __name__ == '__main__':
 
     startt=time.time()
-    points = [(29.822911628984635, -100.42548077091972)]
-    start_time = "20130301"
-    end_time = "20131030"
+    points = np.load('lonlatArray.npz')['arr_0']
+    
+    start_time = "20130401"
+    end_time = "20131001"
     result = extract_Landsat_SR(points, start_time, end_time)
     printer.pprint(result)
     print(time.time() - startt)
