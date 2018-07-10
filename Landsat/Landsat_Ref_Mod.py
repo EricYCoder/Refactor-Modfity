@@ -53,14 +53,6 @@ def get_file_list(path_row, data_dir, start_time, end_time):
     return tar_list
 
 '''
-the data format supported by gdal
-'''
-def pt2fmt(pt):
-    fmttypes = {GDT_Byte: 'B',GDT_Int16: 'h',GDT_UInt16: 'H',GDT_Int32: 'i',\
-    GDT_UInt32: 'I',GDT_Float32: 'f',GDT_Float64: 'f'}
-    return fmttypes.get(pt, 'x')
-
-'''
 获得给定数据的投影参考系和地理参考系
 :param dataset: GDAL地理数据
 :return: 投影参考系和地理参考系
@@ -111,18 +103,36 @@ a list of data with format[{'coordinate': (lat,lon),'BLUE': [(time1,value1),(tim
 -1
 """
 
+def get_band_value(bandraster, px, py, cloud=False):
+    result = bandraster[py][px]
+    if cloud == False:
+        value = round(result*0.0001,4)
+    else:
+        value = round(result,4)
+    return value
+
+def point_boundary_is_valid(bandfile, lat, lon):
+    xsize = bandfile.RasterXSize
+    ysize = bandfile.RasterYSize
+    x, y = lonlat2geo(bandfile, lon, lat) # (lat, lon) to (x, y)
+    px, py = geo2imagexy(bandfile, x, y)  # (x, y) to (row, col)
+    px = int(px)
+    py = int(py)
+    if px > xsize or px < 0 or py > ysize or py < 0:
+        printer.pprint("the point is out of the image range:" + str(lat) + ', ' + str(lon))
+        return False, px, py
+    else:
+        return True, px, py
+
 def extract_Landsat_SR(points, start_time, end_time):
-    time0 = time.time()
     path_row , sample_points = target_path_row(points)
     if len(path_row) == 0:
         raise Exception("There is no consitent path and row")
+        return
     else:
         pass
 
     path_row = list(set(path_row))
-    print(path_row)
-    time1 = time.time()
-    print('Get Path_Row time: ' + str(time1 - time0))
 
     #Results Initialization
     landsat_ref_res = []
@@ -146,57 +156,70 @@ def extract_Landsat_SR(points, start_time, end_time):
 
     if len(tar_list) == 0:
         raise Exception("There is no suitable files")
+        return
     else:
         pass
 
-    time2 = time.time()
-    print('Initialization time: ' + str(time2 - time1))
-
     tile_count = 0
-    #Try to extract Data in a faster way
     for pr_key in tar_list.keys():
-        # print('Processing the tile', tile_count, 'out of ', len(tar_list.keys()))
+        print('Processing the tile', tile_count, 'out of ', len(tar_list.keys()))
         tile_count += 1
 
         img_folders = tar_list[pr_key]
         for folder_path in img_folders:
+            print(folder_path)
             file_date = folder_path.split("_")[-4]
             #open qc img
             try:
                 qc_path = join(folder_path, folder_path.split("/")[-1] + '_pixel_qa.img')
-                print(qc_path)
-                cloud_mask_band = gdal.Open(qc_path)
+                cloudmask = gdal.Open(qc_path)
+                cloudmask_raster = cloudmask.GetRasterBand(1).ReadAsArray()
             except Exception as e:
                 print(e)
-                print('Unable to open QC file in folder:' + folder_path + '\n')
+                print('Unable to open QC file\n')
                 continue
 
-            maskdata = cloud_mask_band.GetRasterBand(1)
-            geomatrix = cloud_mask_band.GetGeoTransform()
-            xsize = cloud_mask_band.RasterXSize
-            ysize = cloud_mask_band.RasterYSize
+            #open band img
+            satellite = folder_path.split("/")[-5]
+            File_Path = {}
+            bandfiles = {}
+            bandraster = {}
 
-            time3 = time.time()
+            if satellite in ["LT05","LE07"]:
+                File_Path['B_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band1.img')
+                File_Path['G_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band2.img')
+                File_Path['R_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band3.img')
+                File_Path['NIR_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band4.img')
+                File_Path['SWIR1'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band5.img')
+                File_Path['SWIR2'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band7.img')
+            else:
+                File_Path['B_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band2.img')
+                File_Path['G_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band3.img')
+                File_Path['R_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band4.img')
+                File_Path['NIR_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band5.img')
+                File_Path['SWIR1'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band6.img')
+                File_Path['SWIR2'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band7.img')
+
+            for band_type in band_key_list:
+                try:
+                    bandfiles[band_type] = gdal.Open(File_Path[band_type])
+                    bandraster[band_type] = bandfiles[band_type].GetRasterBand(1).ReadAsArray()
+                except Exception as e:
+                    print(e)
+                    print('Unable to open ' + band_type + ' file\n')
+                    continue
+
             for location in sample_points[pr_key]:
                 lat = location[0]
                 lon = location[1]
-                x, y = lonlat2geo(cloud_mask_band, lon, lat)
-                px = int((x - geomatrix[0])/geomatrix[1])
-                py = int((y - geomatrix[3])/geomatrix[5])
-                if px > xsize or px < 0 or py > ysize or py < 0:
-                    printer.pprint("the point is out of the image range(" + folder_path + "):" + str(location))
-                    continue
-                else:
-                    pass
 
-                cloud_mask = maskdata.ReadRaster(px, py, 1, 1, buf_type = maskdata.DataType)
-                fmt2 = pt2fmt(maskdata.DataType)
-                cloudmask_data = struct.unpack(fmt2, cloud_mask)
-
-                if cloudmask_data[0] not in [66, 130, 322, 386, 834, 898, 1346]:
+                #Check if data is valid
+                is_valid, px, py = point_boundary_is_valid(cloudmask, lat, lon)
+                if not is_valid:
                     continue
-                time31 = time.time()
-                # print('Find Cloudmask time:' + str(time31 - time3))
+                cloudmask_data = get_band_value(cloudmask_raster, px, py, cloud=True)
+                if cloudmask_data not in [66, 130, 322, 386, 834, 898, 1346]:
+                    continue
 
                 band_data = {
                     'B_band': -1,
@@ -206,53 +229,18 @@ def extract_Landsat_SR(points, start_time, end_time):
                     'SWIR1': -1,
                     'SWIR2': -1
                 }
-                File_Path = {
-                    'B_band': 'NoPath',
-                    'G_band': 'NoPath',
-                    'R_band': 'NoPath',
-                    'NIR_band': 'NoPath',
-                    'SWIR1': 'NoPath',
-                    'SWIR2': 'NoPath'
-                }
-
-                satellite = folder_path.split("/")[-5]
-                if satellite in ["LT05","LE07"]:
-                    File_Path['B_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band1.img')
-                    File_Path['G_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band2.img')
-                    File_Path['R_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band3.img')
-                    File_Path['NIR_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band4.img')
-                    File_Path['SWIR1'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band5.img')
-                    File_Path['SWIR2'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band7.img')
-                else:
-                    File_Path['B_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band2.img')
-                    File_Path['G_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band3.img')
-                    File_Path['R_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band4.img')
-                    File_Path['NIR_band'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band5.img')
-                    File_Path['SWIR1'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band6.img')
-                    File_Path['SWIR2'] = join(folder_path, folder_path.split("/")[-1] + '_sr_band7.img')
-
                 #Get Band Ref
                 for band_type in band_key_list:
                     try:
-                        '''New method
-                        bandfile = gdal.Open(File_Path[band_type])
-                        bandraster = bandfile.GetRasterBand(1).ReadAsArray()
-                        band_data[band_type] = get_band_value(bandraster, px, py)
-                        '''
-                        bandfile = gdal.Open(File_Path[band_type])
-                        banddata = bandfile.GetRasterBand(1)
-                        result = banddata.ReadRaster(px, py, 1, 1, buf_type=banddata.DataType)
-                        fmt = pt2fmt(banddata.DataType)
-                        intval = struct.unpack(fmt, result)
-                        band_data[band_type] = round(intval[0]*0.0001,4)
+                        ref_value = get_band_value(bandraster[band_type], px, py)
+                        if ref_value < 1.0 and ref_value > 0.0:
+                            band_data[band_type] = ref_value
                     except Exception as e:
                         print(e)
-                        print('Unable to open ' + band_type + ' file in folder:' + folder_path + '\n')
+                        print('Unable to get ' + band_type + ' data\n')
                         continue
 
-                time32 = time.time()
-                print('Extract data time:' + str(time32 - time31))
-                # print('Landsat data extract success!' + folder_path + '\n')
+                print('Landsat data extract success!\n')
 
                 #Add to results
                 point_exist = False
@@ -262,28 +250,20 @@ def extract_Landsat_SR(points, start_time, end_time):
                         for band_type in band_key_list:
                             try:
                                 landsat_ref_record[band_type].append((file_date, float(band_data[band_type])))
+                                break
                             except KeyError:
                                 print('Key Error!!!')
                                 pass
                         break
 
-                if point_exist == False:
-                    print("The point has not been initialized: " + str(location) + "\n")
+                if point_exist is False:
+                    print("This point has not been initialized: " + str(location) + "\n")
                     continue
 
-                time33 = time.time()
-                # print('Add result time:' + str(time33 - time32))
-
-            time4 = time.time()
-            print('one img time:' + str(time4 - time3))
-
-    time5 = time.time()
     #Sort the resuls by date
     for landsat_ref_record in landsat_ref_res:
         for band_type in band_key_list:
             landsat_ref_record[band_type].sort()
-    time6 = time.time()
-    print('Sort result time:' + str(time6 - time5))
 
     return landsat_ref_res
 
