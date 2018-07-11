@@ -90,7 +90,7 @@ def get_tile_name(points):
             print("Call MODIS2TILE program error: " + str(pt) + "\n")
             continue
 
-        if tileName == None:
+        if tileName is None:
             continue
         if tileName in tile_dict.keys():
             tile_dict[tileName].append(pt)
@@ -145,17 +145,16 @@ Others(eg. QC == 2/3)
 
 def extract_MODIS_LST(points, startDate, endDate):
     #Remove duplicate points
-    #points = list(set(points))
+    points = list(set(points))
 
     #Results Initialization
-    MODIS_LST_res = []
+    MODIS_LST_res = {}
     for pt in points:
         MODIS_LST_record = {}
         #Add coordinate key
-        MODIS_LST_record['coordinate'] = (pt[0], pt[1])
         MODIS_LST_record['MOD11A1'] = []
         MODIS_LST_record['MYD11A1'] = []
-        MODIS_LST_res.append(MODIS_LST_record)
+        MODIS_LST_res[pt] = MODIS_LST_record
 
     #Get tile name based on lat/lon
     time00 = time.time()
@@ -233,32 +232,10 @@ def extract_MODIS_LST(points, startDate, endDate):
                     night_lst_value = get_band_value(night_lst_rst, px, py)
 
                 #Add to results
-                point_exist = False
-
-                #if the point exist
-                for MODIS_LST_record in MODIS_LST_res:
-                    if list(MODIS_LST_record['coordinate']) == list(location):
-                        point_exist = True
-                        try:
-                            MODIS_LST_record[file_type].append((file_date, float('%.2f'%day_lst_value), float('%.2f'%night_lst_value)))
-                            print("Extract finish in :" + file_path)
-                            break
-                        except KeyError:
-                            pass
-
-                if point_exist == False:
-                    #if the point does not exist
-                    print("The point has not been initialized: " + str(location) + "\n")
-                    MODIS_LST_record = {}
-                    #Add coordinate key
-                    MODIS_LST_record['coordinate'] = (latitude, longitude)
-                    MODIS_LST_record['MOD11A1'] = []
-                    MODIS_LST_record['MYD11A1'] = []
-                    #Add LST values
-                    MODIS_LST_record[file_type] = [(file_date, float('%.2f'%day_lst_value), float('%.2f'%night_lst_value))]
-                    MODIS_LST_res.append(MODIS_LST_record)
-
-
+                MODIS_LST_record = MODIS_LST_res[location]
+                MODIS_LST_record[file_type].append((file_date, float('%.2f'%day_lst_value), float('%.2f'%night_lst_value)))
+                print("Extract finish in :" + file_path)
+                
     #sort the results by Date
     for MODIS_LST_record in MODIS_LST_res:
         if 'MOD11A1' in MODIS_LST_record.keys():
@@ -272,10 +249,10 @@ def extract_MODIS_LST(points, startDate, endDate):
 # test main function
 if __name__ == '__main__':
     time0 = time.time()
-    # points = [(47.729849, -119.540372), (43.79562, -111.466202), (42.034932, -107.947733), (30.732852, -104.768943), (42.969349, -109.885573)]
-    points = list(np.load('lonlatArray.npz')['arr_0'])
+    points = [(47.729849, -119.540372), (43.79562, -111.466202), (42.034932, -107.947733), (30.732852, -104.768943), (42.969349, -109.885573)]
+    # points = list(np.load('lonlatArray.npz')['arr_0'])
     startDate = "20100401"
-    endDate = "20101001"
+    endDate = "20100407"
     MODIS_LST_res = extract_MODIS_LST(points, startDate, endDate)
     printer.pprint(MODIS_LST_res)
     print('Overall Time:' + str(time.time() - time0))
